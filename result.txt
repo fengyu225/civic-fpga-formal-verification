@@ -1,0 +1,522 @@
+File "./civic-fpga.pv", line 161, characters 9-23:
+Warning: identifier tee_attestation rebound.
+File "./civic-fpga.pv", line 169, characters 18-23:
+Warning: identifier design rebound.
+File "./civic-fpga.pv", line 320, characters 9-21:
+Warning: identifier secret_design rebound.
+Linear part:
+ecdhe(x,pk(y)) = ecdhe(y,pk(x))
+Completing equations...
+Completed equations:
+ecdhe(x,pk(y)) = ecdhe(y,pk(x))
+Convergent part: No equation.
+Process 0 (that is, the initial process):
+{1}new sk_tenant: key;
+{2}let pk_tenant: key = pk(sk_tenant) in
+{3}new sk_fpga: key;
+{4}let pk_fpga: key = pk(sk_fpga) in
+{5}new sk_ca: key;
+{6}let pk_ca: key = pk(sk_ca) in
+{7}new sk_tee: key;
+{8}let pk_tee: key = pk(sk_tee) in
+{9}let cert_tenant: cert = cert_create(pk_tenant,sk_ca) in
+{10}let cert_fpga: cert = cert_create(pk_fpga,sk_ca) in
+{11}new secret_design_1: bitstring;
+(
+    {12}!
+    {13}let sk_tenant_1: key = sk_tenant in
+    {14}let design_1: bitstring = secret_design_1 in
+    {15}in(public_channel, (tee_pk: key,tee_nonce: nonce,tee_attestation: bitstring));
+    {16}let tee_nonce_bits: bitstring = nonce_to_bitstring(tee_nonce) in
+    {17}new session_id: bitstring;
+    {18}if verify(tee_attestation,(tee_pk,tee_nonce_bits),pk_tee) then
+    {19}event TenantVerifiesTEE(tee_pk,tee_nonce,tee_attestation);
+    {20}new tenant_nonce_1: nonce;
+    {21}let signed_design: bitstring = sign((design_1,nonce_to_bitstring(tenant_nonce_1),session_id),sk_tenant_1) in
+    {22}let encrypted_design: bitstring = aenc((design_1,signed_design),tee_pk) in
+    {23}let signed_nonce: bitstring = sign(nonce_to_bitstring(tee_nonce),sk_tenant_1) in
+    {24}event TenantSendsDesign(design_1,tenant_nonce_1,session_id);
+    {25}out(public_channel, (encrypted_design,signed_nonce,cert_tenant,tenant_nonce_1,session_id));
+    {26}in(public_channel, validation_result: attestation);
+    {27}event TenantReceivesAttestation(validation_result);
+    {28}new deployment_request: bitstring;
+    {29}event TenantRequestsDeployment(deployment_request);
+    {30}out(public_channel, (session_id,deployment_request));
+    {31}in(public_channel, (fpga_ecdhe_pub: key,fpga_nonce: nonce,fpga_sig: bitstring,fpga_cert: cert));
+    {32}if cert_verify(fpga_cert,pk_ca) then
+    {33}if verify(fpga_sig,(fpga_ecdhe_pub,nonce_to_bitstring(fpga_nonce),deployment_request),pk_fpga) then
+    {34}new tenant_ecdhe_sk: key;
+    {35}let tenant_ecdhe_pub: key = pk(tenant_ecdhe_sk) in
+    {36}new tenant_nonce_2: nonce;
+    {37}let tenant_sig: bitstring = sign((tenant_ecdhe_pub,nonce_to_bitstring(tenant_nonce_2),nonce_to_bitstring(fpga_nonce),deployment_request),sk_tenant_1) in
+    {38}event TenantAuthenticatesFPGA(fpga_ecdhe_pub,fpga_nonce);
+    {39}out(public_channel, (tenant_ecdhe_pub,tenant_nonce_2,tenant_sig,cert_tenant));
+    {40}let auth_confirm: bitstring = sign((tenant_ecdhe_pub,fpga_ecdhe_pub,nonce_to_bitstring(tenant_nonce_2),nonce_to_bitstring(fpga_nonce),deployment_request),sk_tenant_1) in
+    {41}out(public_channel, auth_confirm);
+    {42}in(public_channel, fpga_auth_confirm: bitstring);
+    {43}if verify(fpga_auth_confirm,(fpga_ecdhe_pub,tenant_ecdhe_pub,nonce_to_bitstring(fpga_nonce),nonce_to_bitstring(tenant_nonce_2),deployment_request),pk_fpga) then
+    {44}let shared_secret: bitstring = ecdhe(tenant_ecdhe_sk,fpga_ecdhe_pub) in
+    {45}event ECDHEPerformed(tenant_ecdhe_pub,fpga_ecdhe_pub);
+    {46}let shared_key: key = kdf(shared_secret) in
+    {47}event KeyDerivationPerformed(shared_key);
+    {48}event MutualAuthentication(session_id,tenant_ecdhe_pub,fpga_ecdhe_pub,tenant_nonce_2,fpga_nonce);
+    {49}event SharedKeyEstablished(session_id,shared_key,tenant_ecdhe_pub,fpga_ecdhe_pub,tenant_nonce_2,fpga_nonce);
+    {50}let encrypted_bitstream: bitstring = senc((design_1,validation_result),shared_key) in
+    {51}out(public_channel, encrypted_bitstream)
+) | (
+    {52}!
+    {53}let sk_fpga_1: key = sk_fpga in
+    {54}in(public_channel, (session_id_1: bitstring,deployment_request_1: bitstring));
+    {55}event FPGAAllocated(deployment_request_1);
+    {56}new fpga_ecdhe_sk: key;
+    {57}let fpga_ecdhe_pub_1: key = pk(fpga_ecdhe_sk) in
+    {58}new fpga_nonce_1: nonce;
+    {59}let fpga_sig_1: bitstring = sign((fpga_ecdhe_pub_1,nonce_to_bitstring(fpga_nonce_1),deployment_request_1),sk_fpga_1) in
+    {60}out(public_channel, (fpga_ecdhe_pub_1,fpga_nonce_1,fpga_sig_1,cert_fpga));
+    {61}in(public_channel, (tenant_ecdhe_pub_1: key,tenant_nonce: nonce,tenant_sig_1: bitstring,tenant_cert: cert));
+    {62}if cert_verify(tenant_cert,pk_ca) then
+    {63}if verify(tenant_sig_1,(tenant_ecdhe_pub_1,nonce_to_bitstring(tenant_nonce),nonce_to_bitstring(fpga_nonce_1),deployment_request_1),pk_tenant) then
+    {64}event FPGAAuthenticatesTenant(tenant_ecdhe_pub_1,tenant_nonce);
+    {65}in(public_channel, tenant_auth_confirm: bitstring);
+    {66}if verify(tenant_auth_confirm,(tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,nonce_to_bitstring(tenant_nonce),nonce_to_bitstring(fpga_nonce_1),deployment_request_1),pk_tenant) then
+    {67}let fpga_auth_confirm_1: bitstring = sign((fpga_ecdhe_pub_1,tenant_ecdhe_pub_1,nonce_to_bitstring(fpga_nonce_1),nonce_to_bitstring(tenant_nonce),deployment_request_1),sk_fpga_1) in
+    {68}out(public_channel, fpga_auth_confirm_1);
+    {69}let shared_secret_1: bitstring = ecdhe(fpga_ecdhe_sk,tenant_ecdhe_pub_1) in
+    {70}event ECDHEPerformed(tenant_ecdhe_pub_1,fpga_ecdhe_pub_1);
+    {71}let shared_key_1: key = kdf(shared_secret_1) in
+    {72}event KeyDerivationPerformed(shared_key_1);
+    {73}event MutualAuthentication(session_id_1,tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,tenant_nonce,fpga_nonce_1);
+    {74}event SharedKeyEstablished(session_id_1,shared_key_1,tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,tenant_nonce,fpga_nonce_1);
+    {75}in(public_channel, encrypted_bitstream_1: bitstring);
+    {76}let (received_design: bitstring,received_attestation: attestation) = sdec(encrypted_bitstream_1,shared_key_1) in
+    {77}event FPGAReceivesBitstream(received_design);
+    {78}let computed_hash: hash = sha384(received_design) in
+    {79}new current_time: timestamp;
+    {80}let tenant_id: bitstring = pk_to_bitstring(pk_tenant) in
+    {81}if verify_attestation(received_attestation,computed_hash,validated,tenant_id,current_time) then
+    {82}event FPGAVerifiesBitstream(received_design,computed_hash);
+    {83}event FPGAConfigured(received_design)
+) | (
+    {84}!
+    {85}let sk_tee_1: key = sk_tee in
+    {86}new tee_transport_sk: key;
+    {87}let tee_transport_pk: key = pk(tee_transport_sk) in
+    {88}new tee_nonce_1: nonce;
+    {89}let tee_nonce_bits_1: bitstring = nonce_to_bitstring(tee_nonce_1) in
+    {90}let tee_attestation_1: bitstring = sign((tee_transport_pk,tee_nonce_bits_1),sk_tee_1) in
+    {91}event TEEProvidesAttestation(tee_transport_pk,tee_nonce_1,tee_attestation_1);
+    {92}let tee_attestation_2: bitstring = sign((tee_transport_pk,tee_nonce_bits_1),sk_tee_1) in
+    {93}out(public_channel, (tee_transport_pk,tee_nonce_1,tee_attestation_2));
+    {94}in(public_channel, (encrypted_design_1: bitstring,signed_nonce_1: bitstring,cert_tenant_1: cert,tenant_nonce_3: nonce,session_id_2: bitstring));
+    {95}if cert_verify(cert_tenant_1,pk_ca) then
+    {96}let verified_nonce_bits: bitstring = nonce_to_bitstring(tee_nonce_1) in
+    {97}if verify(signed_nonce_1,verified_nonce_bits,pk_tenant) then
+    {98}let (design_2: bitstring,signed_design_1: bitstring) = adec(encrypted_design_1,tee_transport_sk) in
+    {99}if verify(signed_design_1,(design_2,nonce_to_bitstring(tenant_nonce_3),session_id_2),pk_tenant) then
+    {100}event TEEReceivesDesign(design_2,tenant_nonce_3,session_id_2);
+    {101}let design_hash: hash = sha384(design_2) in
+    {102}event TEEValidatesDesign(design_2,design_hash);
+    {103}new current_time_1: timestamp;
+    {104}let tenant_id_1: bitstring = pk_to_bitstring(pk_tenant) in
+    {105}let validation_result_1: attestation = create_attestation(design_hash,validated,tenant_id_1,current_time_1) in
+    {106}out(public_channel, validation_result_1)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}new sk_tenant: key;
+{3}new sk_fpga: key;
+{5}new sk_ca: key;
+{7}new sk_tee: key;
+{11}new secret_design_1: bitstring;
+{6}let pk_ca: key = pk(sk_ca) in
+{4}let pk_fpga: key = pk(sk_fpga) in
+{2}let pk_tenant: key = pk(sk_tenant) in
+(
+    {12}!
+    {15}in(public_channel, (tee_pk: key,tee_nonce: nonce,tee_attestation: bitstring));
+    {17}new session_id: bitstring;
+    {16}let tee_nonce_bits: bitstring = nonce_to_bitstring(tee_nonce) in
+    {8}let pk_tee: key = pk(sk_tee) in
+    {18}if verify(tee_attestation,(tee_pk,tee_nonce_bits),pk_tee) then
+    {19}event TenantVerifiesTEE(tee_pk,tee_nonce,tee_attestation);
+    {20}new tenant_nonce_1: nonce;
+    {14}let design_1: bitstring = secret_design_1 in
+    {24}event TenantSendsDesign(design_1,tenant_nonce_1,session_id);
+    {13}let sk_tenant_1: key = sk_tenant in
+    {23}let signed_nonce: bitstring = sign(nonce_to_bitstring(tee_nonce),sk_tenant_1) in
+    {21}let signed_design: bitstring = sign((design_1,nonce_to_bitstring(tenant_nonce_1),session_id),sk_tenant_1) in
+    {22}let encrypted_design: bitstring = aenc((design_1,signed_design),tee_pk) in
+    {9}let cert_tenant: cert = cert_create(pk_tenant,sk_ca) in
+    {25}out(public_channel, (encrypted_design,signed_nonce,cert_tenant,tenant_nonce_1,session_id));
+    {26}in(public_channel, validation_result: attestation);
+    {27}event TenantReceivesAttestation(validation_result);
+    {28}new deployment_request: bitstring;
+    {29}event TenantRequestsDeployment(deployment_request);
+    {30}out(public_channel, (session_id,deployment_request));
+    {31}in(public_channel, (fpga_ecdhe_pub: key,fpga_nonce: nonce,fpga_sig: bitstring,fpga_cert: cert));
+    {32}if cert_verify(fpga_cert,pk_ca) then
+    {33}if verify(fpga_sig,(fpga_ecdhe_pub,nonce_to_bitstring(fpga_nonce),deployment_request),pk_fpga) then
+    {34}new tenant_ecdhe_sk: key;
+    {36}new tenant_nonce_2: nonce;
+    {38}event TenantAuthenticatesFPGA(fpga_ecdhe_pub,fpga_nonce);
+    {35}let tenant_ecdhe_pub: key = pk(tenant_ecdhe_sk) in
+    {37}let tenant_sig: bitstring = sign((tenant_ecdhe_pub,nonce_to_bitstring(tenant_nonce_2),nonce_to_bitstring(fpga_nonce),deployment_request),sk_tenant_1) in
+    {39}out(public_channel, (tenant_ecdhe_pub,tenant_nonce_2,tenant_sig,cert_tenant));
+    {40}let auth_confirm: bitstring = sign((tenant_ecdhe_pub,fpga_ecdhe_pub,nonce_to_bitstring(tenant_nonce_2),nonce_to_bitstring(fpga_nonce),deployment_request),sk_tenant_1) in
+    {41}out(public_channel, auth_confirm);
+    {42}in(public_channel, fpga_auth_confirm: bitstring);
+    {43}if verify(fpga_auth_confirm,(fpga_ecdhe_pub,tenant_ecdhe_pub,nonce_to_bitstring(fpga_nonce),nonce_to_bitstring(tenant_nonce_2),deployment_request),pk_fpga) then
+    {45}event ECDHEPerformed(tenant_ecdhe_pub,fpga_ecdhe_pub);
+    {44}let shared_secret: bitstring = ecdhe(tenant_ecdhe_sk,fpga_ecdhe_pub) in
+    {46}let shared_key: key = kdf(shared_secret) in
+    {47}event KeyDerivationPerformed(shared_key);
+    {48}event MutualAuthentication(session_id,tenant_ecdhe_pub,fpga_ecdhe_pub,tenant_nonce_2,fpga_nonce);
+    {49}event SharedKeyEstablished(session_id,shared_key,tenant_ecdhe_pub,fpga_ecdhe_pub,tenant_nonce_2,fpga_nonce);
+    {50}let encrypted_bitstream: bitstring = senc((design_1,validation_result),shared_key) in
+    {51}out(public_channel, encrypted_bitstream)
+) | (
+    {52}!
+    {54}in(public_channel, (session_id_1: bitstring,deployment_request_1: bitstring));
+    {55}event FPGAAllocated(deployment_request_1);
+    {56}new fpga_ecdhe_sk: key;
+    {58}new fpga_nonce_1: nonce;
+    {57}let fpga_ecdhe_pub_1: key = pk(fpga_ecdhe_sk) in
+    {53}let sk_fpga_1: key = sk_fpga in
+    {59}let fpga_sig_1: bitstring = sign((fpga_ecdhe_pub_1,nonce_to_bitstring(fpga_nonce_1),deployment_request_1),sk_fpga_1) in
+    {10}let cert_fpga: cert = cert_create(pk_fpga,sk_ca) in
+    {60}out(public_channel, (fpga_ecdhe_pub_1,fpga_nonce_1,fpga_sig_1,cert_fpga));
+    {61}in(public_channel, (tenant_ecdhe_pub_1: key,tenant_nonce: nonce,tenant_sig_1: bitstring,tenant_cert: cert));
+    {62}if cert_verify(tenant_cert,pk_ca) then
+    {63}if verify(tenant_sig_1,(tenant_ecdhe_pub_1,nonce_to_bitstring(tenant_nonce),nonce_to_bitstring(fpga_nonce_1),deployment_request_1),pk_tenant) then
+    {64}event FPGAAuthenticatesTenant(tenant_ecdhe_pub_1,tenant_nonce);
+    {65}in(public_channel, tenant_auth_confirm: bitstring);
+    {66}if verify(tenant_auth_confirm,(tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,nonce_to_bitstring(tenant_nonce),nonce_to_bitstring(fpga_nonce_1),deployment_request_1),pk_tenant) then
+    {67}let fpga_auth_confirm_1: bitstring = sign((fpga_ecdhe_pub_1,tenant_ecdhe_pub_1,nonce_to_bitstring(fpga_nonce_1),nonce_to_bitstring(tenant_nonce),deployment_request_1),sk_fpga_1) in
+    {68}out(public_channel, fpga_auth_confirm_1);
+    {70}event ECDHEPerformed(tenant_ecdhe_pub_1,fpga_ecdhe_pub_1);
+    {69}let shared_secret_1: bitstring = ecdhe(fpga_ecdhe_sk,tenant_ecdhe_pub_1) in
+    {71}let shared_key_1: key = kdf(shared_secret_1) in
+    {72}event KeyDerivationPerformed(shared_key_1);
+    {73}event MutualAuthentication(session_id_1,tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,tenant_nonce,fpga_nonce_1);
+    {74}event SharedKeyEstablished(session_id_1,shared_key_1,tenant_ecdhe_pub_1,fpga_ecdhe_pub_1,tenant_nonce,fpga_nonce_1);
+    {75}in(public_channel, encrypted_bitstream_1: bitstring);
+    {76}let (received_design: bitstring,received_attestation: attestation) = sdec(encrypted_bitstream_1,shared_key_1) in
+    {77}event FPGAReceivesBitstream(received_design);
+    {79}new current_time: timestamp;
+    {80}let tenant_id: bitstring = pk_to_bitstring(pk_tenant) in
+    {78}let computed_hash: hash = sha384(received_design) in
+    {81}if verify_attestation(received_attestation,computed_hash,validated,tenant_id,current_time) then
+    {82}event FPGAVerifiesBitstream(received_design,computed_hash);
+    {83}event FPGAConfigured(received_design)
+) | (
+    {84}!
+    {86}new tee_transport_sk: key;
+    {88}new tee_nonce_1: nonce;
+    {89}let tee_nonce_bits_1: bitstring = nonce_to_bitstring(tee_nonce_1) in
+    {87}let tee_transport_pk: key = pk(tee_transport_sk) in
+    {85}let sk_tee_1: key = sk_tee in
+    {90}let tee_attestation_1: bitstring = sign((tee_transport_pk,tee_nonce_bits_1),sk_tee_1) in
+    {91}event TEEProvidesAttestation(tee_transport_pk,tee_nonce_1,tee_attestation_1);
+    {92}let tee_attestation_2: bitstring = sign((tee_transport_pk,tee_nonce_bits_1),sk_tee_1) in
+    {93}out(public_channel, (tee_transport_pk,tee_nonce_1,tee_attestation_2));
+    {94}in(public_channel, (encrypted_design_1: bitstring,signed_nonce_1: bitstring,cert_tenant_1: cert,tenant_nonce_3: nonce,session_id_2: bitstring));
+    {95}if cert_verify(cert_tenant_1,pk_ca) then
+    {96}let verified_nonce_bits: bitstring = nonce_to_bitstring(tee_nonce_1) in
+    {97}if verify(signed_nonce_1,verified_nonce_bits,pk_tenant) then
+    {98}let (design_2: bitstring,signed_design_1: bitstring) = adec(encrypted_design_1,tee_transport_sk) in
+    {99}if verify(signed_design_1,(design_2,nonce_to_bitstring(tenant_nonce_3),session_id_2),pk_tenant) then
+    {100}event TEEReceivesDesign(design_2,tenant_nonce_3,session_id_2);
+    {101}let design_hash: hash = sha384(design_2) in
+    {102}event TEEValidatesDesign(design_2,design_hash);
+    {103}new current_time_1: timestamp;
+    {104}let tenant_id_1: bitstring = pk_to_bitstring(pk_tenant) in
+    {105}let validation_result_1: attestation = create_attestation(design_hash,validated,tenant_id_1,current_time_1) in
+    {106}out(public_channel, validation_result_1)
+)
+
+-- Query not attacker(secret_design[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 128 rules (45 with conclusion selected). Queue: 12 rules.
+Starting query not attacker(secret_design[])
+RESULT not attacker(secret_design[]) is true.
+-- Query event(TEEValidatesDesign(d,h)) ==> event(TenantSendsDesign(d,n,sid)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 118 rules (40 with conclusion selected). Queue: 21 rules.
+Starting query event(TEEValidatesDesign(d,h)) ==> event(TenantSendsDesign(d,n,sid))
+goal reachable: begin(TenantSendsDesign(secret_design_1[],tenant_nonce_4,session_id_3)) -> end(TEEValidatesDesign(secret_design_1[],sha384(secret_design_1[])))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+tenant_nonce_4 = tenant_nonce_1[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(TEEValidatesDesign(d,h)) ==> event(TenantSendsDesign(d,n,sid)) is true.
+-- Query event(TEEValidatesDesign(d,h)) ==> event(TEEReceivesDesign(d,n,sid)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 122 rules (40 with conclusion selected). Queue: 13 rules.
+Starting query event(TEEValidatesDesign(d,h)) ==> event(TEEReceivesDesign(d,n,sid))
+goal reachable: begin(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3)) -> end(TEEValidatesDesign(secret_design_1[],sha384(secret_design_1[])))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+tenant_nonce_4 = tenant_nonce_1[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(TEEValidatesDesign(d,h)) ==> event(TEEReceivesDesign(d,n,sid)) is true.
+-- Query event(TEEReceivesDesign(d,n,sid)) ==> event(TenantSendsDesign(d,n,sid)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 118 rules (40 with conclusion selected). Queue: 21 rules.
+Starting query event(TEEReceivesDesign(d,n,sid)) ==> event(TenantSendsDesign(d,n,sid))
+goal reachable: begin(TenantSendsDesign(secret_design_1[],tenant_nonce_4,session_id_3)) -> end(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+tenant_nonce_4 = tenant_nonce_1[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(TEEReceivesDesign(d,n,sid)) ==> event(TenantSendsDesign(d,n,sid)) is true.
+-- Query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 122 rules (40 with conclusion selected). Queue: 13 rules.
+Starting query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2
+goal reachable: end(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3)) && end(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+tenant_nonce_4 = tenant_nonce_1[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 is true.
+-- Query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 122 rules (40 with conclusion selected). Queue: 13 rules.
+Starting query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2
+goal reachable: end(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3)) && end(TEEReceivesDesign(secret_design_1[],tenant_nonce_4,session_id_3))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+tenant_nonce_4 = tenant_nonce_1[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 is true.
+-- Query event(TenantVerifiesTEE(tee_pk_1,tee_nonce_2,tee_attestation_3)) ==> event(TEEProvidesAttestation(tee_pk_1,tee_nonce_2,tee_attestation_3)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 128 rules (41 with conclusion selected). Queue: 11 rules.
+Starting query event(TenantVerifiesTEE(tee_pk_1,tee_nonce_2,tee_attestation_3)) ==> event(TEEProvidesAttestation(tee_pk_1,tee_nonce_2,tee_attestation_3))
+goal reachable: begin(TEEProvidesAttestation(pk(tee_transport_sk_1),tee_nonce_2,sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]))) -> end(TenantVerifiesTEE(pk(tee_transport_sk_1),tee_nonce_2,sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[])))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+RESULT event(TenantVerifiesTEE(tee_pk_1,tee_nonce_2,tee_attestation_3)) ==> event(TEEProvidesAttestation(tee_pk_1,tee_nonce_2,tee_attestation_3)) is true.
+-- Query event(FPGAVerifiesBitstream(d,h)) ==> event(TEEValidatesDesign(d,h)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 128 rules (45 with conclusion selected). Queue: 12 rules.
+Starting query event(FPGAVerifiesBitstream(d,h)) ==> event(TEEValidatesDesign(d,h))
+RESULT event(FPGAVerifiesBitstream(d,h)) ==> event(TEEValidatesDesign(d,h)) is true.
+-- Query inj-event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> inj-event(MutualAuthentication(sid,tpk,fpk,tn,fn)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 125 rules (40 with conclusion selected). Queue: 31 rules.
+400 rules inserted. Base: 201 rules (62 with conclusion selected). Queue: 8 rules.
+Starting query inj-event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> inj-event(MutualAuthentication(sid,tpk,fpk,tn,fn))
+goal reachable: begin(MutualAuthentication(sid,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ73_1) && attacker(sid) && attacker(validation_result_2) -> end(@occ74_1,SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ74_1 = @occ74[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_fpga[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+@occ73_1 = @occ73[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_fpga[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+goal reachable: begin(MutualAuthentication(sid,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ73_1) && attacker(sid) && attacker(validation_result_2) -> end(@occ74_1,SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ74_1 = @occ74[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_fpga[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+@occ73_1 = @occ73[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_fpga[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+goal reachable: begin(MutualAuthentication(sid,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ73_1) && attacker(sid) && attacker(validation_result_2) -> end(@occ74_1,SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ74_1 = @occ74[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_tenant[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+@occ73_1 = @occ73[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_tenant[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+goal reachable: begin(MutualAuthentication(sid,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ73_1) && attacker(sid) && attacker(validation_result_2) -> end(@occ74_1,SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ74_1 = @occ74[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_tenant[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+@occ73_1 = @occ73[tenant_auth_confirm = sign((pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_cert = cert_create(pk(sk_tenant[]),sk_ca[]),tenant_sig_1 = sign((pk(tenant_ecdhe_sk_1),nonce_to_bitstring(tenant_nonce_4),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_tenant[]),tenant_nonce = tenant_nonce_4,tenant_ecdhe_pub_1 = pk(tenant_ecdhe_sk_1),deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+goal reachable: begin(MutualAuthentication(session_id_3,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ48_1) && attacker(session_id_4) && attacker(validation_result_2) -> end(@occ49_1,SharedKeyEstablished(session_id_3,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_4,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_4,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ49_1 = @occ49[fpga_auth_confirm = sign((pk(fpga_ecdhe_sk_1),pk(tenant_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),nonce_to_bitstring(tenant_nonce_4),deployment_request_2),sk_fpga[]),fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ48_1 = @occ48[fpga_auth_confirm = sign((pk(fpga_ecdhe_sk_1),pk(tenant_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),nonce_to_bitstring(tenant_nonce_4),deployment_request_2),sk_fpga[]),fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(MutualAuthentication(session_id_3,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2),@occ48_1) && attacker(session_id_4) && attacker(validation_result_2) -> end(@occ49_1,SharedKeyEstablished(session_id_3,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+The 1st hypothesis occurs strictly before the conclusion.
+The 2nd, 3rd hypotheses occur before the conclusion.
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_4,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_4,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ49_1 = @occ49[fpga_auth_confirm = sign((pk(fpga_ecdhe_sk_1),pk(tenant_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),nonce_to_bitstring(tenant_nonce_4),deployment_request_2),sk_fpga[]),fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+session_id_3 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+@occ48_1 = @occ48[fpga_auth_confirm = sign((pk(fpga_ecdhe_sk_1),pk(tenant_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),nonce_to_bitstring(tenant_nonce_4),deployment_request_2),sk_fpga[]),fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT inj-event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> inj-event(MutualAuthentication(sid,tpk,fpk,tn,fn)) is true.
+-- Query event(MutualAuthentication(deployment_request_2,tenant_ecdhe_pub_2,fpga_ecdhe_pub_2,tenant_nonce_4,fpga_nonce_2)) ==> event(TenantAuthenticatesFPGA(fpga_ecdhe_pub_2,fpga_nonce_2)) && event(FPGAAuthenticatesTenant(tenant_ecdhe_pub_2,tenant_nonce_4)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 124 rules (40 with conclusion selected). Queue: 12 rules.
+Starting query event(MutualAuthentication(deployment_request_2,tenant_ecdhe_pub_2,fpga_ecdhe_pub_2,tenant_nonce_4,fpga_nonce_2)) ==> event(TenantAuthenticatesFPGA(fpga_ecdhe_pub_2,fpga_nonce_2)) && event(FPGAAuthenticatesTenant(tenant_ecdhe_pub_2,tenant_nonce_4))
+goal reachable: begin(FPGAAuthenticatesTenant(pk(tenant_ecdhe_sk_1),tenant_nonce_4)) && begin(TenantAuthenticatesFPGA(pk(fpga_ecdhe_sk_1),fpga_nonce_2)) && attacker(deployment_request_2) && attacker(validation_result_2) -> end(MutualAuthentication(deployment_request_2,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_3 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_3,session_id_1 = deployment_request_2,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_3,session_id_1 = deployment_request_2,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_3),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_3),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(FPGAAuthenticatesTenant(pk(tenant_ecdhe_sk_1),tenant_nonce_4)) && begin(TenantAuthenticatesFPGA(pk(fpga_ecdhe_sk_1),fpga_nonce_2)) && attacker(deployment_request_2) && attacker(validation_result_2) -> end(MutualAuthentication(deployment_request_2,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_3 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_3,session_id_1 = deployment_request_2,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_3,session_id_1 = deployment_request_2,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_3),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_3),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(FPGAAuthenticatesTenant(pk(tenant_ecdhe_sk_1),tenant_nonce_4)) && begin(TenantAuthenticatesFPGA(pk(fpga_ecdhe_sk_1),fpga_nonce_2)) && attacker(session_id_3) && attacker(validation_result_2) -> end(MutualAuthentication(session_id_4,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+session_id_4 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(FPGAAuthenticatesTenant(pk(tenant_ecdhe_sk_1),tenant_nonce_4)) && begin(TenantAuthenticatesFPGA(pk(fpga_ecdhe_sk_1),fpga_nonce_2)) && attacker(session_id_3) && attacker(validation_result_2) -> end(MutualAuthentication(session_id_4,pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+session_id_4 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(MutualAuthentication(deployment_request_2,tenant_ecdhe_pub_2,fpga_ecdhe_pub_2,tenant_nonce_4,fpga_nonce_2)) ==> event(TenantAuthenticatesFPGA(fpga_ecdhe_pub_2,fpga_nonce_2)) && event(FPGAAuthenticatesTenant(tenant_ecdhe_pub_2,tenant_nonce_4)) is true.
+-- Query event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> event(ECDHEPerformed(tpk,fpk)) && event(KeyDerivationPerformed(k)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+200 rules inserted. Base: 122 rules (40 with conclusion selected). Queue: 22 rules.
+400 rules inserted. Base: 157 rules (58 with conclusion selected). Queue: 8 rules.
+Starting query event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> event(ECDHEPerformed(tpk,fpk)) && event(KeyDerivationPerformed(k))
+goal reachable: begin(KeyDerivationPerformed(kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))))) && begin(ECDHEPerformed(pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1))) && attacker(sid) && attacker(validation_result_2) -> end(SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(KeyDerivationPerformed(kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))))) && begin(ECDHEPerformed(pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1))) && attacker(sid) && attacker(validation_result_2) -> end(SharedKeyEstablished(sid,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = sid,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(KeyDerivationPerformed(kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))))) && begin(ECDHEPerformed(pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1))) && attacker(session_id_3) && attacker(validation_result_2) -> end(SharedKeyEstablished(session_id_4,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+session_id_4 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_fpga[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+goal reachable: begin(KeyDerivationPerformed(kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))))) && begin(ECDHEPerformed(pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1))) && attacker(session_id_3) && attacker(validation_result_2) -> end(SharedKeyEstablished(session_id_4,kdf(ecdhe(tenant_ecdhe_sk_1,pk(fpga_ecdhe_sk_1))),pk(tenant_ecdhe_sk_1),pk(fpga_ecdhe_sk_1),tenant_nonce_4,fpga_nonce_2))
+Abbreviations:
+tee_transport_sk_1 = tee_transport_sk[!1 = @sid]
+tee_nonce_2 = tee_nonce_1[!1 = @sid]
+session_id_4 = session_id[tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+deployment_request_2 = deployment_request[validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+fpga_ecdhe_sk_1 = fpga_ecdhe_sk[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+fpga_nonce_2 = fpga_nonce_1[deployment_request_1 = deployment_request_2,session_id_1 = session_id_3,!1 = @sid_2]
+tenant_ecdhe_sk_1 = tenant_ecdhe_sk[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+tenant_nonce_4 = tenant_nonce_2[fpga_cert = cert_create(pk(sk_tenant[]),sk_ca[]),fpga_sig = sign((pk(fpga_ecdhe_sk_1),nonce_to_bitstring(fpga_nonce_2),deployment_request_2),sk_fpga[]),fpga_nonce = fpga_nonce_2,fpga_ecdhe_pub = pk(fpga_ecdhe_sk_1),validation_result = validation_result_2,tee_attestation = sign((pk(tee_transport_sk_1),nonce_to_bitstring(tee_nonce_2)),sk_tee[]),tee_nonce = tee_nonce_2,tee_pk = pk(tee_transport_sk_1),!1 = @sid_1]
+RESULT event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> event(ECDHEPerformed(tpk,fpk)) && event(KeyDerivationPerformed(k)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker(secret_design[]) is true.
+
+Query event(TEEValidatesDesign(d,h)) ==> event(TenantSendsDesign(d,n,sid)) is true.
+
+Query event(TEEValidatesDesign(d,h)) ==> event(TEEReceivesDesign(d,n,sid)) is true.
+
+Query event(TEEReceivesDesign(d,n,sid)) ==> event(TenantSendsDesign(d,n,sid)) is true.
+
+Query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 is true.
+
+Query event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2 is true.
+
+Query event(TenantVerifiesTEE(tee_pk_1,tee_nonce_2,tee_attestation_3)) ==> event(TEEProvidesAttestation(tee_pk_1,tee_nonce_2,tee_attestation_3)) is true.
+
+Query event(FPGAVerifiesBitstream(d,h)) ==> event(TEEValidatesDesign(d,h)) is true.
+
+Query inj-event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> inj-event(MutualAuthentication(sid,tpk,fpk,tn,fn)) is true.
+
+Query event(MutualAuthentication(deployment_request_2,tenant_ecdhe_pub_2,fpga_ecdhe_pub_2,tenant_nonce_4,fpga_nonce_2)) ==> event(TenantAuthenticatesFPGA(fpga_ecdhe_pub_2,fpga_nonce_2)) && event(FPGAAuthenticatesTenant(tenant_ecdhe_pub_2,tenant_nonce_4)) is true.
+
+Query event(SharedKeyEstablished(sid,k,tpk,fpk,tn,fn)) ==> event(ECDHEPerformed(tpk,fpk)) && event(KeyDerivationPerformed(k)) is true.
+
+--------------------------------------------------------------
+

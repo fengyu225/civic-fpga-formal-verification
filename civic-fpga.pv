@@ -1,0 +1,324 @@
+set traceDisplay = long.  (* Enables long trace display for detailed output when a query fails *)
+set attacker = active.    (* Declares an active attacker who can intercept, modify, and send messages *)
+
+(* Types *)
+type key.      (* Cryptographic keys *)
+type nonce.    (* Random numbers used once *)
+type hash.     (* Hash values *)
+type cert.     (* Certificates *)
+type attestation.  (* Attestations *)
+type timestamp.    (* Timestamps *)
+type design.   (* FPGA designs *)
+
+(* Private constant representing a secret design *)
+free secret_design: design [private].
+
+(* Constants *)
+const validated: bitstring.  (* Constant representing a validated state *)
+
+(* Channels *)
+free public_channel: channel.  (* Public communication channel *)
+
+(* Cryptographic primitives *)
+(* Asymmetric encryption *)
+fun aenc(bitstring, key): bitstring.
+fun pk(key): key.
+reduc forall m: bitstring, k: key; adec(aenc(m, pk(k)), k) = m.
+
+(* Symmetric encryption *)
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m, k), k) = m.
+
+(* Digital signatures *)
+fun sign(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; verify(sign(m, k), m, pk(k)) = true.
+
+(* Hash function *)
+fun sha384(bitstring): hash.
+
+(* Key derivation function *)
+fun kdf(bitstring): key.
+
+(* Elliptic Curve Diffie-Hellman key exchange *)
+fun ecdhe(key, key): bitstring.
+equation forall x: key, y: key; ecdhe(x, pk(y)) = ecdhe(y, pk(x)).
+
+(* Certificate functions *)
+fun cert_create(key, key): cert.
+reduc forall k: key, ca_k: key; cert_verify(cert_create(k, ca_k), pk(ca_k)) = true.
+
+(* Attestation functions *)
+fun create_attestation(hash, bitstring, bitstring, timestamp): attestation.
+reduc forall h: hash, vr: bitstring, ti: bitstring, ts: timestamp;
+    verify_attestation(create_attestation(h, vr, ti, ts), h, vr, ti, ts) = true.
+
+(* Helper functions *)
+fun nonce_to_bitstring(nonce): bitstring [data].
+fun pk_to_bitstring(key): bitstring [data].
+
+(* Events for tracking protocol steps *)
+event TenantSendsDesign(bitstring, nonce, bitstring).
+event TEEReceivesDesign(bitstring, nonce, bitstring).
+event TEEValidatesDesign(bitstring, hash).
+event TenantReceivesAttestation(attestation).
+event TenantRequestsDeployment(bitstring).
+event FPGAAllocated(bitstring).
+event TenantAuthenticatesFPGA(key, nonce).
+event FPGAAuthenticatesTenant(key, nonce).
+event SharedKeyEstablished(bitstring, key, key, key, nonce, nonce).
+event MutualAuthentication(bitstring, key, key, nonce, nonce).
+event FPGAReceivesBitstream(bitstring).
+event FPGAVerifiesBitstream(bitstring, hash).
+event FPGAConfigured(bitstring).
+event TenantVerifiesTEE(key, nonce, bitstring).
+event TEEProvidesAttestation(key, nonce, bitstring).
+event ECDHEPerformed(key, key).
+event KeyDerivationPerformed(key).
+
+(* Security queries *)
+(* Confidentiality: Check if the attacker can learn the secret design *)
+query attacker(secret_design).
+
+(* TEE Validation Related Queries *)
+(* Integrity: Ensure that if the TEE validates a design, it must have been previously sent by the tenant *)
+(* This query verifies that the TEE only validates designs that were actually sent by the tenant,
+   preventing the validation of forged or tampered designs *)
+query d:bitstring, h:hash, n:nonce, sid:bitstring;
+    event(TEEValidatesDesign(d,h)) ==>
+    event(TenantSendsDesign(d,n,sid)).
+
+(* Authentication of the TEE: Ensure the TEE only validates designs it has received *)
+(* This query checks that the TEE doesn't validate any design it hasn't properly received,
+   preventing potential bypass of the reception process *)
+query d:bitstring, h:hash, n:nonce, sid:bitstring;
+    event(TEEValidatesDesign(d,h)) ==>
+    event(TEEReceivesDesign(d,n,sid)).
+
+(* Authentication of Tenant to TEE: Ensure the TEE only receives designs sent by the tenant *)
+(* This query verifies that any design received by the TEE must have been sent by the tenant,
+   preventing impersonation attacks or injection of false designs *)
+query d:bitstring, n:nonce, sid:bitstring;
+    event(TEEReceivesDesign(d,n,sid)) ==>
+    event(TenantSendsDesign(d,n,sid)).
+
+(* Preventing Replay Attacks: Ensure unique association between designs and nonces *)
+(* This query checks that for each nonce and session ID, only one unique design can be received,
+   preventing replay attacks where an old design is resent *)
+query d1:bitstring, d2:bitstring, n:nonce, sid:bitstring;
+    event(TEEReceivesDesign(d1,n,sid)) && event(TEEReceivesDesign(d2,n,sid)) ==> d1 = d2.
+
+(* Ensure uniqueness of designs for a given nonce and session ID *)
+(* This query is similar to the previous one but uses TEEReceivesDesign event,
+   providing an additional check against replay attacks *)
+query d1:bitstring, d2:bitstring, n:nonce, sid:bitstring;
+    event(TEEReceivesDesign(d1, n, sid)) && event(TEEReceivesDesign(d2, n, sid)) ==> d1 = d2.
+
+(* Authentication of the TEE (Explicit) *)
+(* This property ensures that the Tenant only sends designs to an authenticated TEE *)
+query tee_pk:key, tee_nonce:nonce, tee_attestation:bitstring;
+    event(TenantVerifiesTEE(tee_pk, tee_nonce, tee_attestation)) ==>
+    event(TEEProvidesAttestation(tee_pk, tee_nonce, tee_attestation)).
+
+(* Deployment Related Queries *)
+
+(* Verify that the FPGA only configures designs validated by the TEE *)
+(* This query ensures that any bitstream verified by the FPGA must have been previously
+   validated by the TEE, maintaining the integrity of the deployment process *)
+query d:bitstring, h:hash;
+event(FPGAVerifiesBitstream(d, h)) ==> event(TEEValidatesDesign(d, h)).
+
+(* Ensure mutual authentication before key establishment *)
+(* This query checks that mutual authentication between the tenant and FPGA
+   occurs before a shared key is established, preventing unauthorized key exchanges *)
+query sid:bitstring, k:key, tpk:key, fpk:key, tn:nonce, fn:nonce;
+    inj-event(SharedKeyEstablished(sid, k, tpk, fpk, tn, fn)) ==>
+    inj-event(MutualAuthentication(sid, tpk, fpk, tn, fn)).
+
+(* Authentication of the Tenant and FPGA (Explicit) *)
+(* This property ensures mutual authentication between Tenant and FPGA *)
+query tenant_ecdhe_pub:key, fpga_ecdhe_pub:key, tenant_nonce:nonce, fpga_nonce:nonce, deployment_request:bitstring;
+    event(MutualAuthentication(deployment_request, tenant_ecdhe_pub, fpga_ecdhe_pub, tenant_nonce, fpga_nonce)) ==>
+    (event(TenantAuthenticatesFPGA(fpga_ecdhe_pub, fpga_nonce)) &&
+     event(FPGAAuthenticatesTenant(tenant_ecdhe_pub, tenant_nonce))).
+
+(* Secure Key Establishment (Explicit) *)
+(* This property ensures that the shared key is derived from the ECDHE exchange *)
+query sid:bitstring, k:key, tpk:key, fpk:key, tn:nonce, fn:nonce;
+    event(SharedKeyEstablished(sid, k, tpk, fpk, tn, fn)) ==>
+    (event(ECDHEPerformed(tpk, fpk)) && event(KeyDerivationPerformed(k))).
+
+(* TEE process *)
+let TEE(sk_tee: key, pk_tenant: key, pk_ca: key) =
+    (* Generate transport key and nonce *)
+    new tee_transport_sk: key;
+    let tee_transport_pk = pk(tee_transport_sk) in
+    new tee_nonce: nonce;
+    let tee_nonce_bits = nonce_to_bitstring(tee_nonce) in
+    let tee_attestation = sign((tee_transport_pk, tee_nonce_bits), sk_tee) in
+    event TEEProvidesAttestation(tee_transport_pk, tee_nonce, tee_attestation);
+
+    (* Create and send TEE attestation *)
+    let tee_attestation = sign((tee_transport_pk, tee_nonce_bits), sk_tee) in
+    out(public_channel, (tee_transport_pk, tee_nonce, tee_attestation));
+
+    (* Receive and verify encrypted design from tenant *)
+    in(public_channel, (encrypted_design: bitstring, signed_nonce: bitstring, cert_tenant: cert, tenant_nonce: nonce, session_id: bitstring));
+    if cert_verify(cert_tenant, pk_ca) then (
+        let verified_nonce_bits = nonce_to_bitstring(tee_nonce) in
+        if verify(signed_nonce, verified_nonce_bits, pk_tenant) then (
+            let (design: bitstring, signed_design: bitstring) = adec(encrypted_design, tee_transport_sk) in
+            if verify(signed_design, (design, nonce_to_bitstring(tenant_nonce), session_id), pk_tenant) then (
+                (* Validate design *)
+                event TEEReceivesDesign(design, tenant_nonce, session_id);
+                let design_hash = sha384(design) in
+                event TEEValidatesDesign(design, design_hash);
+                (* Create and send validation result *)
+                new current_time: timestamp;
+                let tenant_id = pk_to_bitstring(pk_tenant) in
+                let validation_result = create_attestation(design_hash, validated, tenant_id, current_time) in
+                out(public_channel, validation_result)
+            )
+        )
+    ).
+
+(* Tenant process *)
+let Tenant(sk_tenant: key, pk_fpga: key, pk_tee: key, pk_ca: key, cert_tenant: cert, design: bitstring) =
+    (* Receive TEE's public key and nonce *)
+    in(public_channel, (tee_pk: key, tee_nonce: nonce, tee_attestation: bitstring));
+    let tee_nonce_bits = nonce_to_bitstring(tee_nonce) in
+
+    (* Create session ID *)
+    new session_id: bitstring;
+
+    (* Verify TEE's attestation *)
+    if verify(tee_attestation, (tee_pk, tee_nonce_bits), pk_tee) then (
+        (* Send encrypted design to TEE *)
+        event TenantVerifiesTEE(tee_pk, tee_nonce, tee_attestation);
+        new tenant_nonce_1: nonce;
+        let signed_design = sign((design, nonce_to_bitstring(tenant_nonce_1), session_id), sk_tenant) in
+        let encrypted_design = aenc((design, signed_design), tee_pk) in
+        let signed_nonce = sign(nonce_to_bitstring(tee_nonce), sk_tenant) in
+        event TenantSendsDesign(design, tenant_nonce_1, session_id);
+        out(public_channel, (encrypted_design, signed_nonce, cert_tenant, tenant_nonce_1, session_id));
+
+        (* Receive validation result from TEE *)
+        in(public_channel, validation_result: attestation);
+        event TenantReceivesAttestation(validation_result);
+
+        (* Request FPGA deployment *)
+        new deployment_request: bitstring;
+        event TenantRequestsDeployment(deployment_request);
+        out(public_channel, (session_id, deployment_request));
+
+        (* Perform mutual authentication with FPGA *)
+        in(public_channel, (fpga_ecdhe_pub: key, fpga_nonce: nonce, fpga_sig: bitstring, fpga_cert: cert));
+        if cert_verify(fpga_cert, pk_ca) then (
+            if verify(fpga_sig, (fpga_ecdhe_pub, nonce_to_bitstring(fpga_nonce), deployment_request), pk_fpga) then (
+                (* Generate ECDHE key pair and nonce *)
+                new tenant_ecdhe_sk: key;
+                let tenant_ecdhe_pub = pk(tenant_ecdhe_sk) in
+                new tenant_nonce_2: nonce;
+                let tenant_sig = sign((tenant_ecdhe_pub, nonce_to_bitstring(tenant_nonce_2), nonce_to_bitstring(fpga_nonce), deployment_request), sk_tenant) in
+
+                (* Authentication *)
+                event TenantAuthenticatesFPGA(fpga_ecdhe_pub, fpga_nonce);
+                out(public_channel, (tenant_ecdhe_pub, tenant_nonce_2, tenant_sig, cert_tenant));
+
+                (* Send authentication confirmation *)
+                let auth_confirm = sign((tenant_ecdhe_pub, fpga_ecdhe_pub, nonce_to_bitstring(tenant_nonce_2), nonce_to_bitstring(fpga_nonce), deployment_request), sk_tenant) in
+                out(public_channel, auth_confirm);
+
+                (* Verify FPGA's authentication confirmation *)
+                in(public_channel, fpga_auth_confirm: bitstring);
+                if verify(fpga_auth_confirm, (fpga_ecdhe_pub, tenant_ecdhe_pub, nonce_to_bitstring(fpga_nonce), nonce_to_bitstring(tenant_nonce_2), deployment_request), pk_fpga) then (
+                    (* Compute shared key *)
+                    let shared_secret = ecdhe(tenant_ecdhe_sk, fpga_ecdhe_pub) in
+                    event ECDHEPerformed(tenant_ecdhe_pub, fpga_ecdhe_pub);
+                    let shared_key = kdf(shared_secret) in
+                    event KeyDerivationPerformed(shared_key);
+
+                    (* Trigger events *)
+                    event MutualAuthentication(session_id, tenant_ecdhe_pub, fpga_ecdhe_pub, tenant_nonce_2, fpga_nonce);
+                    event SharedKeyEstablished(session_id, shared_key, tenant_ecdhe_pub, fpga_ecdhe_pub, tenant_nonce_2, fpga_nonce);
+
+                    (* Encrypt and send bitstream *)
+                    let encrypted_bitstream = senc((design, validation_result), shared_key) in
+                    out(public_channel, encrypted_bitstream)
+                )
+            )
+        )
+    ).
+
+(* FPGA Security Agent process *)
+let FPGA(sk_fpga: key, pk_tenant: key, pk_ca: key, cert_fpga: cert) =
+    (* Receive deployment request *)
+    in(public_channel, (session_id: bitstring, deployment_request: bitstring));
+    event FPGAAllocated(deployment_request);
+
+    (* Generate ECDHE key pair and nonce *)
+    new fpga_ecdhe_sk: key;
+    let fpga_ecdhe_pub = pk(fpga_ecdhe_sk) in
+    new fpga_nonce: nonce;
+    let fpga_sig = sign((fpga_ecdhe_pub, nonce_to_bitstring(fpga_nonce), deployment_request), sk_fpga) in
+    (* Send ECDHE public key, nonce, and signature *)
+    out(public_channel, (fpga_ecdhe_pub, fpga_nonce, fpga_sig, cert_fpga));
+
+    (* Perform mutual authentication with Tenant *)
+    in(public_channel, (tenant_ecdhe_pub: key, tenant_nonce: nonce, tenant_sig: bitstring, tenant_cert: cert));
+    if cert_verify(tenant_cert, pk_ca) then (
+        if verify(tenant_sig, (tenant_ecdhe_pub, nonce_to_bitstring(tenant_nonce), nonce_to_bitstring(fpga_nonce), deployment_request), pk_tenant) then (
+            (* Authentication *)
+            event FPGAAuthenticatesTenant(tenant_ecdhe_pub, tenant_nonce);
+
+            (* Verify Tenant's authentication confirmation *)
+            in(public_channel, tenant_auth_confirm: bitstring);
+            if verify(tenant_auth_confirm, (tenant_ecdhe_pub, fpga_ecdhe_pub, nonce_to_bitstring(tenant_nonce), nonce_to_bitstring(fpga_nonce), deployment_request), pk_tenant) then (
+                (* Send authentication confirmation *)
+                let fpga_auth_confirm = sign((fpga_ecdhe_pub, tenant_ecdhe_pub, nonce_to_bitstring(fpga_nonce), nonce_to_bitstring(tenant_nonce), deployment_request), sk_fpga) in
+                out(public_channel, fpga_auth_confirm);
+
+                (* Compute shared key *)
+                let shared_secret = ecdhe(fpga_ecdhe_sk, tenant_ecdhe_pub) in
+                event ECDHEPerformed(tenant_ecdhe_pub, fpga_ecdhe_pub);
+                let shared_key = kdf(shared_secret) in
+                event KeyDerivationPerformed(shared_key);
+
+                (* Trigger events *)
+                event MutualAuthentication(session_id, tenant_ecdhe_pub, fpga_ecdhe_pub, tenant_nonce, fpga_nonce);
+                event SharedKeyEstablished(session_id, shared_key, tenant_ecdhe_pub, fpga_ecdhe_pub, tenant_nonce, fpga_nonce);
+
+                (* Receive and decrypt the encrypted bitstream *)
+                in(public_channel, encrypted_bitstream: bitstring);
+                let (received_design: bitstring, received_attestation: attestation) = sdec(encrypted_bitstream, shared_key) in
+                event FPGAReceivesBitstream(received_design);
+
+                (* Verify the attestation *)
+                let computed_hash = sha384(received_design) in
+                new current_time: timestamp;
+                let tenant_id = pk_to_bitstring(pk_tenant) in
+                if verify_attestation(received_attestation, computed_hash, validated, tenant_id, current_time) then (
+                    event FPGAVerifiesBitstream(received_design, computed_hash);
+                    event FPGAConfigured(received_design)
+                )
+            )
+        )
+    ).
+
+(* Main process *)
+process
+    (* Generate keys for all parties *)
+    new sk_tenant: key; let pk_tenant = pk(sk_tenant) in
+    new sk_fpga: key; let pk_fpga = pk(sk_fpga) in
+    new sk_ca: key; let pk_ca = pk(sk_ca) in
+    new sk_tee: key; let pk_tee = pk(sk_tee) in
+
+    (* Create certificates *)
+    let cert_tenant = cert_create(pk_tenant, sk_ca) in
+    let cert_fpga = cert_create(pk_fpga, sk_ca) in
+
+    (* Create a secret design *)
+    new secret_design: bitstring;
+
+    (!Tenant(sk_tenant, pk_fpga, pk_tee, pk_ca, cert_tenant, secret_design)) |
+    (!FPGA(sk_fpga, pk_tenant, pk_ca, cert_fpga)) |
+    (!TEE(sk_tee, pk_tenant, pk_ca))
